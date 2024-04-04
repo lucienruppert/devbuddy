@@ -1,0 +1,10 @@
+:host {
+  background: linear-gradient(black, 90%, blue);
+  min-height: 100vh;
+  height: auto;
+  display: block;
+}
+
+/* * {
+  @apply border-2;
+} */
