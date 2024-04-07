@@ -4,14 +4,21 @@
   display: block;
 }
 
-.desktop-width {
+.item-title {
   width: 100%;
 }
 
+.items {
+  width: 80%;
+}
+
 @media (min-width: 768px) {
-  .desktop-width {
+  .item-title {
     width: 150px;
   }
+  .items {
+    width: 300px;
+  } 
 }
 
 /* * {
