@@ -1,0 +1,78 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install dependencies and build
+        run: |
+          npm install
+          npm run build
+
+      - name: Setup SSH and deploy
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PASSPHRASE: ${{ secrets.SSH_PASSPHRASE }}
+          VPS_IP: ${{ secrets.VPS_IP }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          # Setup SSH
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.VPS_IP }} >> ~/.ssh/known_hosts
+          echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+          chmod 700 ~/.ssh
+          chmod 600 ~/.ssh/id_rsa
+
+          # Start SSH agent
+          eval "$(ssh-agent -s)"
+          echo "$SSH_PASSPHRASE" | SSH_ASKPASS=/bin/echo ssh-add ~/.ssh/id_rsa
+
+          # Create a single script that will run on the server
+          cat > remote_commands.sh << 'EOL'
+          #!/bin/bash
+          set -e
+          echo "Starting deployment..."
+
+          # Ensure main directory exists
+          echo "Ensuring main directory exists..."
+          sudo mkdir -p /var/www/app/devbuddy-site
+          sudo chown -R $USER:$USER /var/www/app/devbuddy-site
+
+          echo "Deployment directory ready"
+          EOL
+
+          # First run the preparation commands
+          echo "Running preparation commands..."
+          scp remote_commands.sh ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:/tmp/
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} "chmod +x /tmp/remote_commands.sh && /tmp/remote_commands.sh"
+
+          # Copy Angular application files from the correct dist directory
+          echo "Copying Angular application files..."
+          scp -r dist/luciendelmar/browser/* ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:/var/www/app/devbuddy-site/ || echo "Warning: Some dist files may not have copied"
+
+          # Copy configuration files if needed
+          scp package.json ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:/var/www/app/devbuddy-site/ || echo "Warning: package.json not copied"
+          scp .env ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:/var/www/app/devbuddy-site/ || echo "Warning: .env not copied"
+
+          # Final deployment steps
+          echo "Running final deployment steps..."
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} "cd /var/www/app/devbuddy-site && \
+            sudo chown -R \$USER:\$USER . && \
+            sudo chmod -R 755 . && \
+            npm install --production"
+
+          echo "Deployment completed"
